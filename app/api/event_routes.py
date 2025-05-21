@@ -18,6 +18,10 @@ async def handle_create_event(event: EventCreate, service: EventService = Depend
 async def handle_update_event(event_id: str, event: EventUpdate, service: EventService = Depends(get_event_service)):
     return await service.update_event(event_id, event)
 
+@router.get('/events/range', response_model=List[EventRead])
+async def handle_get_range_events(start: datetime, end: datetime, service: EventService = Depends(get_event_service)):
+    return await service.get_range_events(start, end)
+
 @router.get('/events/{event_id}', response_model=EventRead)
 async def handle_get_one_event(event_id: str, service: EventService = Depends(get_event_service)):
     return await service.get_one_event(event_id)
@@ -25,10 +29,6 @@ async def handle_get_one_event(event_id: str, service: EventService = Depends(ge
 @router.get('/events', response_model=List[EventRead])
 async def handle_get_all_events(service: EventService = Depends(get_event_service)):
     return await service.get_all_events()
-
-@router.get('/events/range', response_model=List[EventRead])
-async def handle_get_range_events(start: datetime, end: datetime, service: EventService = Depends(get_event_service)):
-    return await service.get_range_events(start, end)
 
 @router.delete('/events/{event_id}')
 async def handle_delete_event(event_id: str, service: EventService = Depends(get_event_service)):
