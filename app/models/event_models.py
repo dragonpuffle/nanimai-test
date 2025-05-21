@@ -11,10 +11,11 @@ class EventBase(BaseModel):
     end_time: datetime
 
     @field_validator('end_time')
+    @classmethod
     def validate_end_time(cls, end_time, values):
         start_time = values.data.get('start_time')
         if end_time < start_time:
-            raise ValueError('End time must be before start time')
+            raise ValueError('End time must be after start time')
         return end_time
 
 class EventCreate(EventBase):
