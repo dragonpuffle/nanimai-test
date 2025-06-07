@@ -1,78 +1,66 @@
 from typing import List
+
+from beanie import PydanticObjectId
 from bson import ObjectId
 from datetime import datetime
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from fastapi import HTTPException
 
-from app.models.event_models import EventCreate, EventUpdate, EventRead
+from app.models.event_models import EventCreate, EventUpdate, Event
 
 
 class EventService:
-    def __init__(self, db_client: AsyncIOMotorClient):
-        self.collection = db_client['events_db']['events']
-
-    async def initialize(self):
-        await self.collection.create_index('start_time')
-        await self.collection.create_index('end_time')
-
-    @staticmethod
-    def parse_event(data: dict) -> EventRead:
-        data = data.copy()
-        if "_id" in data and isinstance(data["_id"], ObjectId):
-            data["_id"] = str(data["_id"])
-        return EventRead.model_validate(data)
-
-    def parse_events(self, datas: List[dict]) -> List[EventRead]:
-        return [self.parse_event(data) for data in datas]
-
-    async def create_event(self, event: EventCreate) -> EventRead:
-        conflict = await self.collection.find_one({
+    async def create_event(self, data: EventCreate) -> Event:
+        conflict = await Event.find({
             "$or": [
                 {
-                    "start_time": {"$lte": event.start_time},
-                    "end_time": {"$gt": event.start_time},
+                    "start_time": {"$lte": data.start_time},
+                    "end_time": {"$gt": data.start_time},
                 },
                 {
-                    "start_time": {"$lt": event.end_time},
-                    "end_time": {"$gte": event.end_time},
+                    "start_time": {"$lt": data.end_time},
+                    "end_time": {"$gte": data.end_time},
                 },
                 {
-                    "start_time": {"$gte": event.start_time},
-                    "end_time": {"$lte": event.end_time},
+                    "start_time": {"$gte": data.start_time},
+                    "end_time": {"$lte": data.end_time},
                 },
                 {
-                    "start_time": {"$lte": event.start_time},
-                    "end_time": {"$gte": event.end_time},
+                    "start_time": {"$lte": data.start_time},
+                    "end_time": {"$gte": data.end_time},
                 }
             ]
-        })
+        }).first_or_none()
         if conflict:
             raise HTTPException(400, detail='Событие пересекается с другим')
-        result = await self.collection.insert_one(event.model_dump())
-        new_event = await self.get_one_event(result.inserted_id)
-        return new_event
+        result = Event(**data.model_dump())
+        await result.insert()
+        return result
 
-    async def update_event(self, event_id: str, event: EventUpdate) -> EventRead:
-        obj_id = ObjectId(event_id)
-        await self.collection.update_one({'_id': obj_id}, {'$set': event.model_dump()})
-        updated_event = await self.get_one_event(event_id)
-        return updated_event
 
-    async def get_one_event(self, event_id: str) -> EventRead:
-        obj_id = ObjectId(event_id)
-        event = await self.collection.find_one({'_id': obj_id})
+    async def update_event(self, event_id: str, data: EventUpdate) -> Event:
+        existing_event = await Event.get(PydanticObjectId(event_id))
+        if not existing_event:
+            raise HTTPException(404, detail='Event not found')
+
+        await existing_event.set(data.model_dump(exclude_unset=True))
+        return existing_event
+
+
+    async def get_one_event(self, event_id: str) -> Event:
+        event = await Event.get(PydanticObjectId(event_id))
         if not event:
-            raise HTTPException(404, 'Событие не найдено')
-        return self.parse_event(dict(event))
+            raise HTTPException(404, detail='Event not found')
+        return event
 
-    async def get_all_events(self) -> List[EventRead]:
-        cursor = self.collection.find({})
-        events = await cursor.to_list(length=100)
-        return self.parse_events(events)
 
-    async def get_range_events(self, start: datetime, end: datetime) -> List[EventRead]:
-        cursor = self.collection.find({
+    async def get_all_events(self) -> List[Event]:
+        return await Event.find_all().to_list()
+
+
+    async def get_range_events(self, start: datetime, end: datetime) -> List[Event]:
+        return await Event.find({
             "$or": [
                 {
                     "start_time": {"$lte": start},
@@ -91,13 +79,12 @@ class EventService:
                     "end_time": {"$gte": end},
                 }
             ]
-        })
-        events = await cursor.to_list(length=100)
-        return self.parse_events(events)
+        }).to_list()
 
 
     async def delete_event(self, event_id: str):
-        result = await self.collection.delete_one({'_id': ObjectId(event_id)})
-        if result.deleted_count == 0:
-            raise HTTPException(404, 'Событие не найдено')
+        event = await Event.get(PydanticObjectId(event_id))
+        if not event:
+            raise HTTPException(404, detail='Event not found')
+        await event.delete()
         return {'msg': 'deleted'}
