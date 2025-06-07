@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
+from beanie import Document
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -21,11 +22,19 @@ class EventBase(BaseModel):
 class EventCreate(EventBase):
     pass
 
-class EventUpdate(EventBase):
-    title: Optional[str]
-    description: Optional[str]
-    start_time: Optional[datetime]
-    end_time: Optional[datetime]
+class EventUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
 
 class EventRead(EventBase):
     id: str = Field(alias='_id')
+
+
+class Event(Document, EventBase):
+    class Settings:
+        name = 'events'
+
+        indexes = ['start_time', 'end_time']
+
