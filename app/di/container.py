@@ -23,5 +23,6 @@ async def init_beanie_container():
     client = container.mongo_client()
     await init_beanie(database=client['events_db'], document_models=[Event])
 
+
 def get_event_service():
     return container.event_service()
